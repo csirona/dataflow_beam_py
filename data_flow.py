@@ -35,6 +35,7 @@ class GenerateFile(beam.DoFn):
 
         yield csv_file
 
+
 def run_pipeline():
     # Specify the GCS output file path
     output_path = 'gs://your-bucket/output.txt'  # Replace with your desired GCS output file path
@@ -43,12 +44,15 @@ def run_pipeline():
     options = PipelineOptions()
 
     with beam.Pipeline(options=options) as pipeline:
-        # Gen
-        # erate the file content
-        file_content = pipeline | 'GenerateFile' >> beam.ParDo(GenerateFile())
+        # Generate the file content
+        file_content = (
+            pipeline
+            | 'Create' >> beam.Create([None])
+            | 'GenerateFile' >> beam.ParDo(GenerateFile())
+        )
 
         # Write the file content to GCS
-        file_content | 'WriteToGCS' >> beam.io.WriteToText(output_path)
+        file_content | 'WriteToGCS' >> beam.io.WriteToText(output_path, windowed=True)
 
 if __name__ == '__main__':
     run_pipeline()
