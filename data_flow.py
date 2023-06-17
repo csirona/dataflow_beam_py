@@ -1,12 +1,15 @@
 import apache_beam as beam
-from apache_beam.io import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
 import csv
 import requests
 
-
-class GenerateFile(beam.DoFn):
+class UploadFileToGCS(beam.DoFn):
     def process(self, element):
+        import requests
+        import csv
+        import apache_beam as beam
+        from apache_beam.options.pipeline_options import PipelineOptions
+
         api_url = 'https://api.unidadeditorial.es/sports/v1/classifications/current/?site=2&type=10&tournament=0152'
 
         response = requests.get(api_url)
@@ -33,26 +36,41 @@ class GenerateFile(beam.DoFn):
             writer.writerow(['fullName', 'position', 'drawn', 'lost', 'won', 'pts', 'played'])
             writer.writerows(rows)
 
-        yield csv_file
+        # Specify the GCS output file path
+        output_path = 'gs://your-bucket/classification_data.csv'  # Replace with your desired GCS output file path
+
+        # Upload the file to GCS
+        with beam.io.gcsio.GcsIO().open(output_path, 'wb') as gcs_file:
+            with open(csv_file, 'rb') as local_file:
+                gcs_file.write(local_file.read())
+
+        yield output_path
 
 
 def run_pipeline():
-    # Specify the GCS output file path
-    output_path = 'gs://your-bucket/output.txt'  # Replace with your desired GCS output file path
-
     # Create the pipeline options with GCP credentials and other necessary options
-    options = PipelineOptions()
+    options = PipelineOptions(
+        runner='DataflowRunner',
+        project='flowapiprimera',
+        staging_location='gs://dataflow-staging-us-central1-5f1e024c90d7f8cfd09240d1be6169ed/staging',
+        temp_location='gs://dataflow-staging-us-central1-5f1e024c90d7f8cfd09240d1be6169ed/temp',
+        region='us-central1',
+    )
 
     with beam.Pipeline(options=options) as pipeline:
-        # Generate the file content
-        file_content = (
+        # Create a dummy element
+        dummy_element = [None]
+
+        # Upload the file to GCS
+        uploaded_file = (
             pipeline
-            | 'Create' >> beam.Create([None])
-            | 'GenerateFile' >> beam.ParDo(GenerateFile())
+            | 'Create' >> beam.Create(dummy_element)
+            | 'UploadFileToGCS' >> beam.ParDo(UploadFileToGCS())
         )
 
-        # Write the file content to GCS
-        file_content | 'WriteToGCS' >> beam.io.WriteToText(output_path, windowed=True)
+        # Print the GCS output file path
+        uploaded_file | 'PrintOutputPath' >> beam.Map(print)
+
 
 if __name__ == '__main__':
     run_pipeline()
